@@ -275,17 +275,57 @@
     return game;
   }
 
+  // ----------------------------------------------------- page-aware helpers --
+  // Pure functions (no globals) so they can be unit-tested in Node.
+
+  const ROOT_ID = 'quinn-doom-root';
+  const ISSUE_PATH = /^\/[^/]+\/issue\/([A-Za-z0-9]+-\d+)(?:\/|$)/;
+
+  // Returns the issue identifier (e.g. "ENG-12") for an issue page path, else null.
+  function issueKey(pathname) {
+    const m = ISSUE_PATH.exec(pathname || '');
+    return m ? m[1].toUpperCase() : null;
+  }
+
+  function labelOf(node) {
+    const get = (n) => (node.getAttribute && node.getAttribute(n)) || '';
+    return [get('aria-label'), get('aria-placeholder'), get('data-placeholder'), get('placeholder')].join(' ');
+  }
+
+  // Finds the issue description editor so the game can be mounted *next to* it.
+  // We only read the DOM; the game is never placed inside the editor itself.
+  function findDescriptionEditor(root) {
+    const editors = Array.prototype.slice.call(
+      root.querySelectorAll('[contenteditable="true"], [contenteditable=""]')
+    ).filter((n) => !(n.closest && n.closest('#' + ROOT_ID)));
+    if (!editors.length) return null;
+    const labelled = editors.find((n) => /description/i.test(labelOf(n)));
+    if (labelled) return labelled;
+    const inBlock = editors.find((n) => n.closest && n.closest('[class*="escription"], [data-testid*="escription"]'));
+    if (inBlock) return inBlock;
+    // Fallback: the title is typically the first editable, the description the second.
+    return editors.length >= 2 ? editors[1] : null;
+  }
+
+  // Inserts `node` as a sibling after the editor's wrapper, never inside the editable.
+  function mountAfterEditor(editor, node) {
+    const host = editor.parentElement && editor.parentElement.parentElement ? editor.parentElement : editor;
+    if (!host.parentElement) return false;
+    host.insertAdjacentElement('afterend', node);
+    return true;
+  }
+
   // Exposed for tests (Node only); the userscript has no other globals.
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { createGame, makeRng, MAP_SRC };
+    module.exports = { createGame, makeRng, MAP_SRC, issueKey, findDescriptionEditor, mountAfterEditor };
     return;
   }
 
   // -------------------------------------------------------------------- ui --
 
   const COLS = 80, ROWS = 28;
-  const ROOT_ID = 'quinn-doom-root';
-  let root = null, raf = 0, game = null, last = 0;
+  const LAUNCHER_ID = 'quinn-doom-launcher';
+  let root = null, raf = 0, game = null, last = 0, watch = 0, mountedKey = null;
   const keys = new Set();
 
   function el(tag, css, text) {
@@ -295,23 +335,47 @@
     return n;
   }
 
+  function notify(msg) {
+    const b = document.getElementById(LAUNCHER_ID);
+    if (!b) return;
+    b.textContent = msg;
+    setTimeout(() => { b.textContent = 'DOOM'; }, 2500);
+  }
+
   function close() {
     cancelAnimationFrame(raf);
+    clearInterval(watch);
     keys.clear();
     if (root) root.remove();
     root = null;
     game = null;
+    mountedKey = null;
+  }
+
+  // Runs while the game is open: closes it on SPA navigation or if the description
+  // area disappears (Linear re-renders), and never leaves duplicates behind.
+  function guard() {
+    const key = issueKey(location.pathname);
+    if (!root || key !== mountedKey || !root.isConnected) return close();
+    const dupes = document.querySelectorAll('#' + ROOT_ID);
+    for (let i = 0; i < dupes.length; i++) if (dupes[i] !== root) dupes[i].remove();
   }
 
   function open() {
     if (root) { root.focus(); return; }
+    const key = issueKey(location.pathname);
+    if (!key) return notify('Open an issue first');
+    const editor = findDescriptionEditor(document);
+    if (!editor) return notify('No description found');
+
     game = createGame({ seed: Date.now() });
     root = el('div',
-      'position:fixed;right:16px;bottom:16px;z-index:2147483647;background:#0b0b0b;color:#e8e8e8;' +
-      'border:2px solid #b22;border-radius:6px;padding:8px;outline:none;box-shadow:0 8px 30px rgba(0,0,0,.6);' +
+      'display:block;box-sizing:border-box;width:fit-content;max-width:100%;margin:12px 0;background:#0b0b0b;color:#e8e8e8;' +
+      'border:1px solid #b22;border-radius:6px;padding:8px;outline:none;overflow:auto;' +
       'font:12px/1 ui-monospace,Menlo,Consolas,monospace;user-select:none');
     root.id = ROOT_ID;
     root.tabIndex = 0;
+    root.setAttribute('contenteditable', 'false');
     root.setAttribute('role', 'application');
     root.setAttribute('aria-label', 'Quinn Doom ASCII game');
 
@@ -331,7 +395,8 @@
     const hud = el('div', 'margin-top:6px;white-space:pre');
     const help = el('div', 'margin-top:4px;color:#888', 'Click here to focus · WASD/arrows move+turn · Q/E strafe · Space shoot · R restart · Esc close');
     root.append(bar, screen, hud, help);
-    document.body.appendChild(root);
+    if (!mountAfterEditor(editor, root)) { root = null; game = null; return notify('No description found'); }
+    mountedKey = key;
 
     // Key handling is scoped to the game panel, so Linear editors/inputs are never affected.
     const GAME_KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'r', ' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'escape']);
@@ -348,7 +413,8 @@
     root.addEventListener('keyup', (e) => { keys.delete(e.key.toLowerCase()); });
     root.addEventListener('blur', () => keys.clear());
     root.addEventListener('mousedown', (e) => { if (e.target === root || e.target === screen) { e.preventDefault(); root.focus(); } });
-    root.focus();
+    root.focus({ preventScroll: false });
+    watch = setInterval(guard, 400);
 
     last = performance.now();
     const frame = (now) => {
@@ -378,12 +444,13 @@
   }
 
   // Launch button (inert until clicked) plus a userscript-manager menu entry.
+  // It only starts the game; the game itself renders inline in the issue description area.
   function addLauncher() {
-    if (document.getElementById('quinn-doom-launcher')) return;
-    const b = el('button', 'position:fixed;left:8px;bottom:8px;z-index:2147483646;opacity:.45;background:#222;color:#f55;border:1px solid #555;border-radius:4px;padding:2px 6px;font:11px ui-monospace,monospace;cursor:pointer', 'DOOM');
-    b.id = 'quinn-doom-launcher';
+    if (document.getElementById(LAUNCHER_ID)) return;
+    const b = el('button', 'position:fixed;left:8px;bottom:8px;z-index:2147483646;opacity:.6;background:#222;color:#f55;border:1px solid #555;border-radius:4px;padding:2px 6px;font:11px ui-monospace,monospace;cursor:pointer', 'DOOM');
+    b.id = LAUNCHER_ID;
     b.type = 'button';
-    b.title = 'Play Quinn Doom (local ASCII game)';
+    b.title = 'Play Quinn Doom inline in the issue description area (local only)';
     b.addEventListener('click', open);
     document.body.appendChild(b);
   }

@@ -1,6 +1,6 @@
 # Quinn Doom
 
-A tiny first-person ASCII Doom-style shooter that runs inside the Linear web app as a userscript. Original rendering (raycaster) and no proprietary assets.
+A tiny first-person ASCII Doom-style shooter that runs inline in the issue description area of the Linear web app, as a userscript. Original rendering (raycaster) and no proprietary assets.
 
 **Fully local:** no Linear API calls, no network requests, no storage, nothing written to issues or documents. Game state, input and rendering live in the page's memory and vanish when you close the panel.
 
@@ -8,11 +8,13 @@ A tiny first-person ASCII Doom-style shooter that runs inside the Linear web app
 
 1. Install a userscript manager such as [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey.
 2. Create a new script and paste in the contents of [`linear-doom.user.js`](linear-doom.user.js) (or open the raw file on GitHub and let the manager offer to install it).
-3. Open `https://linear.app`. A faint **DOOM** button appears at the bottom-left (also available from the manager's menu: *Play Quinn Doom*).
+3. Open `https://linear.app` and navigate to an issue. A small **DOOM** button appears at the bottom-left (also available from the manager's menu: *Play Quinn Doom*).
 
 ## Play
 
-Click **DOOM**, then click the game panel so it has focus.
+Open an issue, click **DOOM**, and the game appears directly below the description. Click the game so it has focus. If you're not on an issue page, or no description is found, the button briefly says so and nothing is mounted.
+
+The game is a separate element placed *next to* the description editor: it never writes into the editor or the issue's saved content. It closes automatically when you navigate to another page or issue, and only one copy can exist at a time.
 
 | Key | Action |
 | --- | --- |

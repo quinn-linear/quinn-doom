@@ -70,3 +70,53 @@ test('userscript makes no network or storage calls', () => {
     assert.ok(!src.includes(bad), 'found ' + bad);
   }
 });
+
+const { issueKey, findDescriptionEditor, mountAfterEditor } = require('../linear-doom.user.js');
+
+test('issueKey recognises issue pages only', () => {
+  assert.strictEqual(issueKey('/acme/issue/ENG-12/some-title'), 'ENG-12');
+  assert.strictEqual(issueKey('/acme/issue/eng-12'), 'ENG-12');
+  assert.strictEqual(issueKey('/acme/team/ENG/active'), null);
+  assert.strictEqual(issueKey('/'), null);
+  assert.strictEqual(issueKey(undefined), null);
+});
+
+function fakeEditor(attrs, opts) {
+  opts = opts || {};
+  return {
+    getAttribute: (n) => attrs[n] || '',
+    closest: (sel) => (sel.includes('escription') && opts.inDescription ? {} : null),
+  };
+}
+const fakeRoot = (list) => ({ querySelectorAll: () => list });
+
+test('findDescriptionEditor prefers labelled editor, handles none/one', () => {
+  const title = fakeEditor({ 'aria-label': 'Issue title' });
+  const desc = fakeEditor({ 'data-placeholder': 'Add description…' });
+  const comment = fakeEditor({ 'aria-label': 'Leave a comment' });
+  assert.strictEqual(findDescriptionEditor(fakeRoot([title, comment, desc])), desc);
+  assert.strictEqual(findDescriptionEditor(fakeRoot([])), null);
+  assert.strictEqual(findDescriptionEditor(fakeRoot([title])), null);
+  assert.strictEqual(findDescriptionEditor(fakeRoot([title, comment])), comment); // positional fallback
+  const wrapped = fakeEditor({}, { inDescription: true });
+  assert.strictEqual(findDescriptionEditor(fakeRoot([title, comment, wrapped])), wrapped);
+});
+
+test('mountAfterEditor inserts a sibling outside the editable', () => {
+  const calls = [];
+  const wrapper = { parentElement: {}, insertAdjacentElement: (pos, n) => calls.push([pos, n]) };
+  const editor = { parentElement: Object.assign(wrapper, { parentElement: {} }) };
+  wrapper.parentElement = { };
+  editor.parentElement = wrapper;
+  const node = {};
+  assert.ok(mountAfterEditor(editor, node));
+  assert.deepStrictEqual(calls, [['afterend', node]]);
+  assert.strictEqual(mountAfterEditor({ parentElement: null, insertAdjacentElement() {} }, node), false);
+});
+
+test('userscript inline mount does not write into the editor or use history hooks', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'linear-doom.user.js'), 'utf8');
+  for (const bad of ['execCommand', 'innerHTML', 'history.pushState', 'history.replaceState', 'position:fixed;right']) {
+    assert.ok(!src.includes(bad), 'found ' + bad);
+  }
+});
