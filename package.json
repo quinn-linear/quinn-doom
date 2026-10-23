@@ -1,0 +1,8 @@
+{
+  "name": "quinn-doom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ASCII Doom-style userscript for Linear (local only)",
+  "scripts": { "test": "node --test test/*.test.js" },
+  "license": "MIT"
+}
