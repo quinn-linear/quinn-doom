@@ -1,6 +1,6 @@
 # Quinn Doom
 
-A tiny first-person ASCII Doom-style shooter that runs inline in the issue description area of the Linear web app, as a userscript. Original rendering (raycaster) and no proprietary assets.
+A tiny first-person pixel-art Doom-style shooter that runs inline in the issue description area of the Linear web app, as a userscript. It is a software raycaster drawn to a `<canvas>` with textured walls, floor and ceiling, distance lighting with flicker, animated enemy sprites, and an animated weapon. All textures and sprites are generated procedurally in code at startup: no image files, no downloads, no proprietary assets.
 
 **Fully local:** no Linear API calls, no network requests, no storage, nothing written to issues or documents. Game state, input and rendering live in the page's memory and vanish when you close the panel.
 
@@ -25,7 +25,7 @@ The game is a separate element placed *next to* the description editor: it never
 | R or **Restart** | Restart |
 | Esc or **Close** | Close the game |
 
-Kill all 5 monsters (`M`); pick up `+` ammo and `H` health. Keys are handled only while the panel is focused, so typing in Linear's editors and inputs is never intercepted; click outside the panel (or close it) to return to Linear.
+Kill all 5 demons; walk over ammo boxes and health packs to pick them up. Keys are handled only while the panel is focused, so typing in Linear's editors and inputs is never intercepted; click outside the panel (or close it) to return to Linear.
 
 ## Develop / test
 
@@ -33,4 +33,8 @@ Kill all 5 monsters (`M`); pick up `+` ammo and `H` health. Keys are handled onl
 npm test
 ```
 
-Uses Node's built-in test runner against the game engine (the script exports it only under Node), plus a check that the script contains no network/storage calls or global key listeners. Requires Node 18+.
+Uses Node's built-in test runner against the game engine and the renderer (which draws into a plain byte buffer, so it runs without a browser; the script exports them only under Node). It also checks that the script contains no network/storage calls, external URLs, image loading, or global key listeners. Requires Node 18+.
+
+## Known limitations
+
+The canvas rendering and inline placement have only been checked via Node tests and rendered still frames; they have not been exercised in a real browser with Tampermonkey on linear.app. The description-editor lookup is a heuristic against Linear's DOM and may need adjusting.
